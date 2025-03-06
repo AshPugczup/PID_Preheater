@@ -1,0 +1,11 @@
+LTspice 24.0.12 for Windows
+Circuit: * C:\Users\Maria\OneDrive - Politechnika Warszawska\projekty\PID_preheater\do pid.asc
+Start Time: Thu Feb 20 12:39:34 2025
+solver = Normal
+Maximum thread count: 8
+tnom = 27
+temp = 27
+method = modified trap
+Direct Newton iteration for .op point succeeded.
+Total elapsed time: 0.057 seconds.
+

@@ -82,3 +82,10 @@ fp-info-cache
 #*README_files/
 
 *.PcbDoc
+
+__Previews/
+
+History/
+* Logs*
+Project Outputs *
+*DSNlck
