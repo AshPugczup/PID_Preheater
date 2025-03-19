@@ -1,4 +1,4 @@
 # PID_Preheater
 author: Grzegorz Jabłoński
 
-This repo contains files about my school project that converts normal preheater that is controlled by relay with more advanced PID regulator control, two thermocouples, oled screen, GUI and encoder.
+This repository contains files for my school project, which upgrades a standard relay-controlled preheater with a more advanced PID regulator. The project features dual thermocouples for precise temperature measurement, an OLED screen for real-time display, a GUI for user interaction, and an encoder for easy adjustments.
