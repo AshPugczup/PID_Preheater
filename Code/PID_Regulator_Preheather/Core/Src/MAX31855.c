@@ -1,9 +1,3 @@
-/*************************************************************************************
- Title	 :  MAXIM Integrated MAX31855 Library for STM32 Using HAL Libraries
- Author  :  Bardia Alikhan Afshar <bardia.a.afshar@gmail.com>
- Software:  STM32CubeIDE
- Hardware:  Any STM32 device
-*************************************************************************************/
 #include"MAX31855.h"
 //SPI_HandleTypeDef hspi1;
 
@@ -15,14 +9,14 @@ uint8_t DATARX[4];                                    // Raw Data from MAX6675
 // ------------------- Functions ----------------
 float Max31855_Read_Temp(int sensor){
 int Temp=0;                                           // Temperature Variable
-if(sensor == 1)
+if(sensor == 1 )
 {
-HAL_GPIO_WritePin(SSPORT1,SSPIN1,GPIO_PIN_RESET);       // Low State for SPI Communication
-HAL_SPI_Receive(&hspi1,DATARX,4,1000);                // DATA Transfer
-HAL_GPIO_WritePin(SSPORT1,SSPIN1,GPIO_PIN_SET);		  // High State for SPI Communication
+	HAL_GPIO_WritePin(SSPORT1,SSPIN1,GPIO_PIN_RESET);// Low State for SPI Communication
+	HAL_SPI_Receive(&hspi1,DATARX,4,1000);                // DATA Transfer
+	HAL_GPIO_WritePin(SSPORT1,SSPIN1,GPIO_PIN_SET);		  // High State for SPI Communication
 }
-else if(sensor==2){
-	HAL_GPIO_WritePin(SSPORT2,SSPIN2,GPIO_PIN_RESET);       // Low State for SPI Communication
+else if(sensor==2 ){
+	HAL_GPIO_WritePin(SSPORT2,SSPIN2,GPIO_PIN_RESET);// Low State for SPI Communication
 	HAL_SPI_Receive(&hspi1,DATARX,4,1000);                // DATA Transfer
 	HAL_GPIO_WritePin(SSPORT2,SSPIN2,GPIO_PIN_SET);
 }
