@@ -1,6 +1,7 @@
-../Core/Src/main.c:561:6:SystemClock_Config	80	static,ignoring_inline_asm
-../Core/Src/main.c:127:5:main	88	static,ignoring_inline_asm
-../Core/Src/main.c:827:6:HAL_GPIO_EXTI_Callback	8	static
-../Core/Src/main.c:857:6:HAL_TIM_PeriodElapsedCallback	24	static
-../Core/Src/main.c:875:6:HAL_I2C_MemTxCpltCallback	0	static
-../Core/Src/main.c:886:6:Error_Handler	0	static,ignoring_inline_asm
+../Core/Src/main.c:738:6:SystemClock_Config	96	static,ignoring_inline_asm
+../Core/Src/main.c:141:5:main	120	static,ignoring_inline_asm
+../Core/Src/main.c:1006:6:HAL_GPIO_EXTI_Callback	8	static
+../Core/Src/main.c:1035:6:HAL_TIM_PeriodElapsedCallback	32	static
+../Core/Src/main.c:1053:6:HAL_UART_TxCpltCallback	0	static
+../Core/Src/main.c:1057:6:HAL_UART_RxCpltCallback	8	static
+../Core/Src/main.c:1066:6:Error_Handler	0	static,ignoring_inline_asm
