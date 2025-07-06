@@ -27,7 +27,7 @@
 #include "ssd1306_fonts.h"
 #include <stdbool.h>
 #include <string.h>
-
+#include <math.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -58,6 +58,7 @@ DMA_HandleTypeDef hdma_usart1_rx;
 
 /* USER CODE BEGIN PV */
 // variables
+int pomoc = 0;
 int maximum_firing_delay = 99;
 /*Later in the code you will se that the maximum delay after the zero detection
  * is 7400. Why? Well, we know that the 220V AC voltage has a frequency of around 50-60HZ so
@@ -72,6 +73,15 @@ float real_temperature_heater = 0;
 float real_temperature_element = 0;
 float real_temperature_heater_last = 0;
 float real_temperature_element_last = 0;
+
+// Temperature validation limits
+#define MIN_VALID_TEMP -50.0f // Minimum reasonable temperature
+#define MAX_VALID_TEMP 500.0f // Maximum reasonable temperature
+#define MAX_TEMP_CHANGE 50.0f // Maximum change per reading
+uint8_t bad_reading_counter_ht = 0;
+uint8_t bad_reading_counter_ic = 0;
+#define MAX_BAD_READINGS 5 // Max consecutive bad readings before using anyway
+
 float set_temperature = 99;
 float selected_temperature = 0;
 int temp_select = 1;
@@ -100,7 +110,7 @@ bool TX_state = true;
 // PID variables
 float PID_error = 0;
 float previous_error = 0;
-float elapsedTime, timePrev, time_stamp;
+float elapsedTime, timePrev, time_stamp, time_stamp_off;
 volatile uint32_t Time = 0;
 volatile uint32_t uart_time = 0;
 volatile uint32_t temp1_time = 0;
@@ -108,9 +118,9 @@ volatile uint32_t temp2_time = 0;
 int PID_value = 0;
 volatile uint8_t set = 0;
 // PID constants //TODO do ustawienia
-float kp = 16.8;
-float ki = 0.2836; //0.00006598; // 0.6598;
-float kd = 248.85; //54.5985;
+float kp = 4.5;
+float ki = 0.0571; // 0.2836; //0.00006598; // 0.6598;
+float kd = 0; // 248.85; //54.5985;
 int PID_p = 0;
 float PID_i = 0;
 float PID_d = 0;
@@ -126,12 +136,33 @@ static void MX_SPI1_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
-
+bool IsTemperatureValid(float new_temp,float last_temp);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+/**
+ * @brief Validates if temperature reading is reasonable
+ * @param new_temp New temperature reading
+ * @param last_temp Last valid temperature reading
+ * @return true if reading is valid, false if suspicious
+ */
+bool IsTemperatureValid(float new_temp,float last_temp){
+	// Check if temperature is within physical limits
+	if(new_temp < MIN_VALID_TEMP || new_temp > MAX_VALID_TEMP){
+		return false;
+	}
 
+	// If we have a previous reading, check for excessive change
+	if(last_temp > 0.1f){ // Only check if we have a meaningful previous reading
+		float temp_change = fabsf(new_temp - last_temp);
+		if(temp_change > MAX_TEMP_CHANGE){
+			return false;
+		}
+	}
+
+	return true;
+}
 /* USER CODE END 0 */
 
 /**
@@ -182,38 +213,71 @@ int main(void){
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
-	while(1){ // TODO zmienic i2c na interrupt
+	while(1){
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */
-
 		sens_error = 0;
-		real_temperature_heater = Max31855_Read_Temp(1);
-		if(((real_temperature_heater - real_temperature_heater_last) > 20 || (real_temperature_heater - real_temperature_heater_last) < -20) && real_temperature_heater_last != 0){
-			real_temperature_heater = real_temperature_heater_last;
-		}
-		sens_error_HT = Error; // Directly assign error status for heater sensor
 
-		real_temperature_element = Max31855_Read_Temp(2); // TODO dodac lepsza obsluge bledu
-		if(((real_temperature_element - real_temperature_element_last) > 20 || (real_temperature_element - real_temperature_element_last) < -20) && real_temperature_element_last != 0){
-			real_temperature_element = real_temperature_element_last;
-		}
-		sens_error_IC = Error;					// Directly assign error status for element sensor
+		// Read heater temperature with validation
+		float raw_temp_heater = Max31855_Read_Temp(1);
+		sens_error_HT = Error;
 
+		if(sens_error_HT == 0){
+			if(IsTemperatureValid(raw_temp_heater,real_temperature_heater_last)){
+				// Good reading - use it and reset bad counter
+				real_temperature_heater = raw_temp_heater;
+				bad_reading_counter_ht = 0;
+			}
+			else{
+				// Bad reading - increment counter
+				bad_reading_counter_ht++;
+				// If too many consecutive bad readings, use it anyway (sensor might have moved to new range)
+				if(bad_reading_counter_ht >= MAX_BAD_READINGS){
+					real_temperature_heater = raw_temp_heater;
+					bad_reading_counter_ht = 0;
+				}
+				// Otherwise keep using last good reading
+			}
+		}
+
+		// Read element temperature with validation
+		float raw_temp_element = Max31855_Read_Temp(2);
+		sens_error_IC = Error;
+
+		if(sens_error_IC == 0){
+			if(IsTemperatureValid(raw_temp_element,real_temperature_element_last)){
+				// Good reading - use it and reset bad counter
+				real_temperature_element = raw_temp_element;
+				bad_reading_counter_ic = 0;
+			}
+			else{
+				// Bad reading - increment counter
+				bad_reading_counter_ic++;
+				// If too many consecutive bad readings, use it anyway
+				if(bad_reading_counter_ic >= MAX_BAD_READINGS){
+					real_temperature_element = raw_temp_element;
+					bad_reading_counter_ic = 0;
+				}
+				// Otherwise keep using last good reading
+			}
+		}
+
+		// Determine overall sensor error status
 		if(sens_error_HT != 0){
 			sens_error = sens_error_HT;
 		}
-		else{ // If heater sensor is OK, use element sensor status (could be error or OK)
+		else{
 			sens_error = sens_error_IC;
 		}
+
 		if(sens_error == 0 && last_Error != sens_error){
 			menu_last = 100;
 			ssd1306_Fill(Black);
 			ssd1306_UpdateScreen();
 			last_Error = sens_error;
 		}
-
-		if(last_Error != sens_error && sens_error != 0){
+		else if(last_Error != sens_error && sens_error != 0){
 			switch(sens_error){
 				case 1:
 					ssd1306_Fill(Black);
@@ -269,38 +333,31 @@ int main(void){
 			last_Error = sens_error;
 		}
 
-		if(sens_error == 0){ // TODO dodac wyświetlanie która termopara jest aktualnie używana
-			if(real_temperature_element_last != real_temperature_element || real_temperature_heater_last != real_temperature_heater){ // TODO zmienic na wysylanie tylko zmienionej liczby
+		if(sens_error == 0){
+			// Optimize temperature display - only update if values actually changed
+			if(real_temperature_element_last != real_temperature_element || real_temperature_heater_last != real_temperature_heater || menu_last == 100) // Force update after error recovery
+			{
+				// Clear temperature area first to prevent artifacts
+				ssd1306_FillRectangle(5,5,128,15,Black);
+
 				ssd1306_SetCursor(5,5);
 				ssd1306_WriteString("IC:",Font_7x10,White);
-				for(int i = 0; i < 9; i++){
-					temp[i] = 0;
-				}
-				if(temp_select == 2){
-					sprintf(temp,"%.0f X  ",real_temperature_element);
-				}
-				else{
-					sprintf(temp,"%.0f   ",real_temperature_element);
-				}
+				sprintf(temp,"%.0f%s",real_temperature_element,(temp_select == 2) ? " X":"");
 				ssd1306_SetCursor(27,5);
 				ssd1306_WriteString(temp,Font_7x10,White);
+
 				ssd1306_SetCursor(70,5);
 				ssd1306_WriteString("HT:",Font_7x10,White);
-				for(int i = 0; i < 9; i++){
-					temp[i] = 0;
-				}
-				if(temp_select == 1){
-					sprintf(temp,"%.0f X ",real_temperature_heater);
-				}
-				else{
-					sprintf(temp,"%.0f  ",real_temperature_heater);
-				}
+				sprintf(temp,"%.0f%s",real_temperature_heater,(temp_select == 1) ? " X":"");
 				ssd1306_SetCursor(92,5);
 				ssd1306_WriteString(temp,Font_7x10,White);
 				ssd1306_UpdateScreen();
+
+				// Update last values
 				real_temperature_element_last = real_temperature_element;
 				real_temperature_heater_last = real_temperature_heater;
 			}
+
 			if(temp_set == 1){
 				if(mode_select == 1){
 					if(set_temperature != set_temperature_last){
@@ -502,10 +559,10 @@ int main(void){
 								ssd1306_SetCursor(5,25);
 								ssd1306_WriteString("Power",Font_11x18,White);
 								ssd1306_SetCursor(5,45);
-								if(power < 0){
+								if(power <= 0){
 									ssd1306_WriteString("Off",Font_11x18,White);
 								}
-								else if(power >= 0){
+								else if(power > 0){
 									ssd1306_WriteString(temp,Font_11x18,Black);
 								}
 							}
@@ -664,65 +721,55 @@ int main(void){
 			set_temperature = 99;
 			PID_value = 0;
 			power = 0;
+			set = 0; // Reset timer state
 			HAL_GPIO_WritePin(GPIOA,GPIO_PIN_1,GPIO_PIN_RESET);
 		}
+
 		if(temp_set){
 			if(mode_select == 1){
-				// --- OBLICZENIA ---
+				// PID calculations
 				PID_error = set_temperature - selected_temperature;
-
-// --- Czas ---
-				elapsedTime = (float)(Time - timePrev) / 10000.0f; // Time w krokach 100 µs => dzielimy przez 10k = sekundy
+				elapsedTime = (float)(Time - timePrev) / 10000.0f;
 				timePrev = Time;
 
-// --- PID: P ---
 				PID_p = kp * PID_error;
 
-// --- PID: I (z zabezpieczeniem przed windupem) ---
 				PID_i += ki * PID_error * elapsedTime;
 				if(PID_i > i_term_max)
 					PID_i = i_term_max;
 				if(PID_i < -i_term_max)
 					PID_i = -i_term_max;
 
-// --- PID: D ---
-				PID_d = 0;
-				if(elapsedTime > 0){
-					PID_d = kd * ((PID_error - previous_error) / elapsedTime);
-				}
+				PID_d = (elapsedTime > 0) ? kd * ((PID_error - previous_error) / elapsedTime):0;
 				previous_error = PID_error;
 
-// --- SUMA PID jako "procent mocy" ---
 				power = PID_p + PID_i + PID_d;
-
-// --- Ograniczenie mocy 0–100% ---
-				if(power > pid_output_max){
+				if(power > pid_output_max)
 					power = pid_output_max;
-				}
-				if(power < pid_output_min){
+				if(power < pid_output_min)
 					power = pid_output_min;
-				}
 			}
-// --- KONWERSJA mocy (%) na opóźnienie triaka ---
 
-			PID_value = maximum_firing_delay * (power / 100.0); // im większa moc, tym mniejsze opóźnienie
-
-// --- Zabezpieczenie ---
-			if(PID_value < 0.0){
-				PID_value = 0.0;
-			}
-			if(PID_value > maximum_firing_delay){
+			// Convert power to firing delay
+			PID_value = (int)(maximum_firing_delay * (power / 100.0));
+			if(PID_value < 0)
+				PID_value = 0;
+			if(PID_value > maximum_firing_delay)
 				PID_value = maximum_firing_delay;
-			}
+		}
+		else{
+			// Ensure heater is off when not set
+			PID_value = 0;
+			//power = 0;
+			set = 0; // Reset timer state
+			HAL_GPIO_WritePin(GPIOA,GPIO_PIN_1,GPIO_PIN_RESET);
 		}
 
+		// Optimized UART transmission
 		if((uint32_t)Time - uart_time >= 500){
-			for(int i = 0; i < sizeof(PC_TX); i++){
-				PC_TX[i] = 0;
-			}
 			snprintf((char*)PC_TX,sizeof(PC_TX),"%.0f,%.0f,%d,%d,%.0f\n",real_temperature_element,real_temperature_heater,sens_error_IC,sens_error_HT,power);
 			uart_time = Time;
-			if(TX_state == 1){
+			if(TX_state){
 				HAL_UART_Transmit_DMA(&huart1,PC_TX,(uint16_t)strlen((char*)PC_TX));
 				TX_state = false;
 			}
@@ -811,7 +858,6 @@ static void MX_I2C2_Init(void){
 	/* USER CODE BEGIN I2C2_Init 2 */
 
 	/* USER CODE END I2C2_Init 2 */
-
 }
 
 /**
@@ -849,7 +895,6 @@ static void MX_SPI1_Init(void){
 	/* USER CODE BEGIN SPI1_Init 2 */
 
 	/* USER CODE END SPI1_Init 2 */
-
 }
 
 /**
@@ -891,7 +936,6 @@ static void MX_TIM1_Init(void){
 	/* USER CODE BEGIN TIM1_Init 2 */
 
 	/* USER CODE END TIM1_Init 2 */
-
 }
 
 /**
@@ -924,7 +968,6 @@ static void MX_USART1_UART_Init(void){
 	/* USER CODE BEGIN USART1_Init 2 */
 
 	/* USER CODE END USART1_Init 2 */
-
 }
 
 /**
@@ -939,7 +982,6 @@ static void MX_DMA_Init(void){
 	/* DMA1_Channel2_3_IRQn interrupt configuration */
 	HAL_NVIC_SetPriority(DMA1_Channel2_3_IRQn,0,0);
 	HAL_NVIC_EnableIRQ(DMA1_Channel2_3_IRQn);
-
 }
 
 /**
@@ -1005,16 +1047,14 @@ static void MX_GPIO_Init(void){
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 	if(GPIO_Pin == GPIO_PIN_0){
+		pomoc = 1;
 		if(temp_set){
-			set = 1;
-			time_stamp = Time;
-			//			while((uint32_t)(Time - time_stamp) <= (maximum_firing_delay - PID_value)); //FIXME gdy duzy delay to nie wykonuje petli glownej dodac moze timer ktory po zadanym czasie wlaczy pin
-			//			HAL_GPIO_WritePin(GPIOA,GPIO_PIN_1,GPIO_PIN_SET); //FIXME dlugo czeka żeby wykonac to przez petle glowna
-			//			time_stamp = Time;
-			//			while((uint32_t)(Time - time_stamp) <= 100);
-			//			HAL_GPIO_WritePin(GPIOA,GPIO_PIN_1,GPIO_PIN_RESET);
+			if(set == 0){
+				set = 1;
+				time_stamp = Time;
+			}
 		}
-		//		zero_cross_detected = true;
+
 	}
 	else if(GPIO_Pin == GPIO_PIN_2){
 		button = true;
@@ -1034,19 +1074,23 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	Time++;
-	if(PID_value != 0){
-		if(set == 1){
-			if((uint32_t)(Time - time_stamp) >= ((maximum_firing_delay - PID_value) + 10)){
+	pomoc = 0;
+	// Handle firing delay timing with proper state management
+	if(set == 1){
+		// Wait for firing delay, then turn on if PID_value > 0
+		if((uint32_t)(Time - time_stamp) >= ((maximum_firing_delay - PID_value) + 10)){
+			set = 2;
+			time_stamp_off = Time;
+			if(PID_value > 0 && temp_set){
 				HAL_GPIO_WritePin(GPIOA,GPIO_PIN_1,GPIO_PIN_SET);
-				time_stamp = Time;
-				set = 2;
 			}
 		}
-		if(set == 2){
-			if((uint32_t)(Time - time_stamp) >= 1){
-				HAL_GPIO_WritePin(GPIOA,GPIO_PIN_1,GPIO_PIN_RESET);
-				set = 0;
-			}
+	}
+	else if(set == 2){
+		// Pulse duration - turn off pin after short pulse
+		if((uint32_t)(Time - time_stamp_off) >= 1){
+			HAL_GPIO_WritePin(GPIOA,GPIO_PIN_1,GPIO_PIN_RESET);
+			set = 0; // Reset state for next cycle
 		}
 	}
 }
@@ -1072,19 +1116,19 @@ void Error_Handler(void){
 	/* USER CODE END Error_Handler_Debug */
 }
 
-#ifdef  USE_FULL_ASSERT
+#ifdef USE_FULL_ASSERT
 /**
-  * @brief  Reports the name of the source file and the source line number
-  *         where the assert_param error has occurred.
-  * @param  file: pointer to the source file name
-  * @param  line: assert_param error line source number
-  * @retval None
-  */
+ * @brief  Reports the name of the source file and the source line number
+ *         where the assert_param error has occurred.
+ * @param  file: pointer to the source file name
+ * @param  line: assert_param error line source number
+ * @retval None
+ */
 void assert_failed(uint8_t *file, uint32_t line)
 {
-  /* USER CODE BEGIN 6 */
+	/* USER CODE BEGIN 6 */
 	/* User can add his own implementation to report the file name and line number,
 	   ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
-  /* USER CODE END 6 */
+	/* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */

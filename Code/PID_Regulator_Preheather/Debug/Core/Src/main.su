@@ -1,7 +1,8 @@
-../Core/Src/main.c:738:6:SystemClock_Config	96	static,ignoring_inline_asm
-../Core/Src/main.c:141:5:main	120	static,ignoring_inline_asm
-../Core/Src/main.c:1006:6:HAL_GPIO_EXTI_Callback	8	static
-../Core/Src/main.c:1035:6:HAL_TIM_PeriodElapsedCallback	32	static
-../Core/Src/main.c:1053:6:HAL_UART_TxCpltCallback	0	static
-../Core/Src/main.c:1057:6:HAL_UART_RxCpltCallback	8	static
-../Core/Src/main.c:1066:6:Error_Handler	0	static,ignoring_inline_asm
+../Core/Src/main.c:150:6:IsTemperatureValid	16	static
+../Core/Src/main.c:785:6:SystemClock_Config	96	static,ignoring_inline_asm
+../Core/Src/main.c:172:5:main	120	static,ignoring_inline_asm
+../Core/Src/main.c:1048:6:HAL_GPIO_EXTI_Callback	8	static
+../Core/Src/main.c:1075:6:HAL_TIM_PeriodElapsedCallback	32	static
+../Core/Src/main.c:1097:6:HAL_UART_TxCpltCallback	0	static
+../Core/Src/main.c:1101:6:HAL_UART_RxCpltCallback	8	static
+../Core/Src/main.c:1110:6:Error_Handler	0	static,ignoring_inline_asm
